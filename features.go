@@ -36,7 +36,7 @@ type flagReply struct {
 
 // Initializes the feature client with the provided server URL and project,
 // and starts a background synchronization process.
-func Configure(serverURL, project string) error {
+func Configure(serverURL, project string) {
 	qs := make(url.Values)
 	qs.Set("project", project)
 
@@ -50,8 +50,6 @@ func Configure(serverURL, project string) error {
 	client = &featuresClient{url: u.String()}
 
 	go client.backgroundSync()
-
-	return nil
 }
 
 func (c *featuresClient) get() bool {
