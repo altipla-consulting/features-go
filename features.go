@@ -116,7 +116,7 @@ func (c *features) getFlags(ctx context.Context) error {
 }
 
 func (c *features) backgroundSync() {
-	if env.IsLocal() || env.IsCloudRun() {
+	if isLocal || env.IsCloudRun() {
 		return
 	}
 
