@@ -51,7 +51,7 @@ func Configure(serverURL, project string) {
 
 	client = &featuresClient{url: u.String()}
 
-	go client.backgroundSync()
+	go client.backgroundFetch()
 }
 
 func (c *featuresClient) get() map[string]flagReply {
@@ -134,7 +134,7 @@ func (c *featuresClient) fetch(ctx context.Context) map[string]flagReply {
 	return flags.(map[string]flagReply)
 }
 
-func (c *featuresClient) backgroundSync() {
+func (c *featuresClient) backgroundFetch() {
 	if isLocal || env.IsCloudRun() {
 		return
 	}

@@ -20,9 +20,7 @@ To configure features, you need to run features configure, passing the server UR
 
 ```go
 func main() {
-  if err := features.Configure("https://youserver.com", "project"); err != nil {
-    log.Fatal(err)
-  }
+  features.Configure("https://youserver.com", "project")
 }
 ```
 
