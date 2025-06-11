@@ -61,28 +61,31 @@ func (c *features) getFlags(ctx context.Context) error {
 	c.mu.RUnlock()
 
 	_, err, _ := c.sf.Do("getFlags", func() (interface{}, error) {
+		var lastErr error
 		ctx, cancel := context.WithTimeout(ctx, 7*time.Second)
 		defer cancel()
 
-		var lastErr error
 		for i := 0; i < 3; i++ {
-			tryCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			defer cancel()
-
-			req, err := http.NewRequestWithContext(tryCtx, http.MethodGet, c.url, nil)
+			reqCtx, reqCancel := context.WithTimeout(ctx, 3*time.Second)
+			req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, c.url, nil)
 			if err != nil {
+				reqCancel()
 				return nil, errors.Trace(err)
 			}
 
 			reply, err := http.DefaultClient.Do(req)
+			reqCancel()
 			if err != nil {
 				lastErr = err
-				select {
-				case <-time.After(1 * time.Second):
-					continue
-				case <-ctx.Done():
-					return nil, ctx.Err()
+				if errors.Is(err, context.DeadlineExceeded) {
+					select {
+					case <-time.After(1 * time.Second):
+						continue
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
 				}
+				return nil, errors.Trace(err)
 			}
 
 			body, err := io.ReadAll(reply.Body)
@@ -109,7 +112,7 @@ func (c *features) getFlags(ctx context.Context) error {
 		return nil, errors.Trace(lastErr)
 	})
 
-	return err
+	return errors.Trace(err)
 }
 
 func (c *features) backgroundSync() {
@@ -160,6 +163,7 @@ func Flag(ctx context.Context, code string, opts ...option) bool {
 	}
 
 	if err := client.getFlags(ctx); err != nil {
+		slog.Error("Failed to get feature flags", slog.String("error", err.Error()))
 		return false
 	}
 	flagsByCode := make(map[string]*flag)
