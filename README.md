@@ -2,7 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/altipla-consulting/features-go.svg)](https://pkg.go.dev/github.com/altipla-consulting/features-go)
 
-Feature flags.
+Feature Flags Go client.
 
 
 ## Install
