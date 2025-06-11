@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func InitTestbed() {
+func initTestbed() {
 	isLocal = false
-	client = &features{
-		flags: []*flag{
+	client = &featuresClient{
+		flags: []*flagReply{
 			{
 				Code:    "feature-1",
 				Tenants: []string{"tenant-1"},
@@ -27,33 +27,35 @@ func InitTestbed() {
 	}
 }
 
-func TestFalseClientNotConfigured(t *testing.T) {
-	InitTestbed()
+func TestPanicClientNotConfigured(t *testing.T) {
+	initTestbed()
 	client = nil
-	require.False(t, Flag(context.Background(), "feature-1"))
+	require.PanicsWithValue(t, "Feature flags not configured", func() {
+		Flag(context.Background(), "feature-1")
+	})
 }
 
 func TestTrueFlag(t *testing.T) {
-	InitTestbed()
+	initTestbed()
 	require.True(t, Flag(context.Background(), "feature-1"))
 }
 
 func TestTrueFlagWithTenant(t *testing.T) {
-	InitTestbed()
+	initTestbed()
 	require.True(t, Flag(context.Background(), "feature-1", WithTenant("tenant-1")))
 }
 
 func TestFalseFlag(t *testing.T) {
-	InitTestbed()
+	initTestbed()
 	require.False(t, Flag(context.Background(), "feature-2"))
 }
 
 func TestFalseFlagWithTenant(t *testing.T) {
-	InitTestbed()
+	initTestbed()
 	require.False(t, Flag(context.Background(), "feature-2", WithTenant("tenant-1")))
 }
 
 func TestFalseFlagWithFalseTenant(t *testing.T) {
-	InitTestbed()
+	initTestbed()
 	require.False(t, Flag(context.Background(), "feature-1", WithTenant("tenant-3")))
 }

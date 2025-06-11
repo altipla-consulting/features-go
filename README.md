@@ -26,19 +26,19 @@ func main() {
 }
 ```
 
-### Verify feature flag
+### Check feature flag is enabled
 
 ```go
 if features.Flag(ctx, "feature") {
-    fmt.Print("Feature flag is active.")
+    fmt.Print("Feature flag is enabled.")
 }
 ```
 
-### Verify feature flag with tenant
+### Check feature flag is enabled with tenant
 
 ```go
 if features.Flag(ctx, "feature", features.WithTenant("tenant")) {
-    fmt.Print("Feature flag is active with tenant.")
+    fmt.Print("Feature flag is enabled with tenant.")
 }
 ```
 

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"sync"
 	"time"
 
@@ -17,23 +18,24 @@ import (
 
 var isLocal = env.IsLocal()
 
-var client *features
+var client *featuresClient
 
-type features struct {
+type featuresClient struct {
 	url      string
-	flags    []*flag
+	flags    []*flagReply
 	lastTime time.Time
 	mu       sync.RWMutex
 	sf       singleflight.Group
 }
 
-type flag struct {
+type flagReply struct {
 	Code    string   `json:"code"`
 	Tenants []string `json:"tenants"`
 	Global  bool     `json:"global"`
 }
 
-// Configure the features.
+// Initializes the feature client with the provided server URL and project,
+// and starts a background synchronization process.
 func Configure(serverURL, project string) error {
 	qs := make(url.Values)
 	qs.Set("project", project)
@@ -45,14 +47,14 @@ func Configure(serverURL, project string) error {
 	u.Path += "/eval"
 	u.RawQuery = qs.Encode()
 
-	client = &features{url: u.String()}
+	client = &featuresClient{url: u.String()}
 
 	go client.backgroundSync()
 
 	return nil
 }
 
-func (c *features) getFlags(ctx context.Context) error {
+func (c *featuresClient) get(ctx context.Context) error {
 	c.mu.RLock()
 	if time.Since(c.lastTime) < 15*time.Second && c.flags != nil {
 		c.mu.RUnlock()
@@ -60,7 +62,21 @@ func (c *features) getFlags(ctx context.Context) error {
 	}
 	c.mu.RUnlock()
 
-	_, err, _ := c.sf.Do("getFlags", func() (interface{}, error) {
+	flags, err := c.fetch(ctx)
+	if err != nil {
+		return errors.Trace(err)
+	}
+
+	c.mu.Lock()
+	c.flags = flags
+	c.lastTime = time.Now()
+	c.mu.Unlock()
+
+	return nil
+}
+
+func (c *featuresClient) fetch(ctx context.Context) ([]*flagReply, error) {
+	flags, err, _ := c.sf.Do("fetch", func() (interface{}, error) {
 		var lastErr error
 		ctx, cancel := context.WithTimeout(ctx, 7*time.Second)
 		defer cancel()
@@ -70,7 +86,7 @@ func (c *features) getFlags(ctx context.Context) error {
 			req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, c.url, nil)
 			if err != nil {
 				reqCancel()
-				return nil, errors.Trace(err)
+				return nil, err
 			}
 
 			reply, err := http.DefaultClient.Do(req)
@@ -85,7 +101,7 @@ func (c *features) getFlags(ctx context.Context) error {
 						return nil, ctx.Err()
 					}
 				}
-				return nil, errors.Trace(err)
+				return nil, err
 			}
 
 			body, err := io.ReadAll(reply.Body)
@@ -95,27 +111,22 @@ func (c *features) getFlags(ctx context.Context) error {
 			}
 			defer reply.Body.Close()
 
-			var flags []*flag
+			var flags []*flagReply
 			if err := json.Unmarshal(body, &flags); err != nil {
 				lastErr = err
 				continue
 			}
 
-			c.mu.Lock()
-			c.flags = flags
-			c.lastTime = time.Now()
-			c.mu.Unlock()
-
-			return nil, nil
+			return flags, nil
 		}
 
-		return nil, errors.Trace(lastErr)
+		return nil, lastErr
 	})
 
-	return errors.Trace(err)
+	return flags.([]*flagReply), err
 }
 
-func (c *features) backgroundSync() {
+func (c *featuresClient) backgroundSync() {
 	if isLocal || env.IsCloudRun() {
 		return
 	}
@@ -126,47 +137,45 @@ func (c *features) backgroundSync() {
 	for {
 		select {
 		case <-ticker.C:
-			if err := c.getFlags(context.Background()); err != nil {
+			if err := c.get(context.Background()); err != nil {
 				slog.Error("Failed to sync background feature flags", slog.String("error", err.Error()))
 			}
 		}
 	}
 }
 
-type option func(*options)
+type featuresOption func(*featuresOptions)
 
-type options struct {
+type featuresOptions struct {
 	tenant string
 }
 
 // WithTenant sets the tenant for the flag.
-func WithTenant(tenant string) option {
-	return func(o *options) {
+func WithTenant(tenant string) featuresOption {
+	return func(o *featuresOptions) {
 		o.tenant = tenant
 	}
 }
 
 // Flag returns true if the flag is enabled with the given options.
-func Flag(ctx context.Context, code string, opts ...option) bool {
+func Flag(ctx context.Context, code string, opts ...featuresOption) bool {
 	if isLocal {
 		return true
 	}
 
 	if client == nil {
-		slog.Error("Feature flags not configured")
-		return false
+		panic("Feature flags not configured")
 	}
 
-	options := new(options)
+	options := new(featuresOptions)
 	for _, opt := range opts {
 		opt(options)
 	}
 
-	if err := client.getFlags(ctx); err != nil {
-		slog.Error("Failed to get feature flags", slog.String("error", err.Error()))
+	if err := client.get(ctx); err != nil {
 		return false
 	}
-	flagsByCode := make(map[string]*flag)
+	flagsByCode := make(map[string]*flagReply)
 	for _, flag := range client.flags {
 		flagsByCode[flag.Code] = flag
 	}
@@ -177,10 +186,8 @@ func Flag(ctx context.Context, code string, opts ...option) bool {
 
 	if flagsByCode[code].Global {
 		if options.tenant != "" {
-			for _, tenant := range flagsByCode[code].Tenants {
-				if tenant == options.tenant {
-					return true
-				}
+			if slices.Contains(flagsByCode[code].Tenants, options.tenant) {
+				return true
 			}
 		} else {
 			return true
