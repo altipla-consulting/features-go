@@ -54,29 +54,23 @@ func Configure(serverURL, project string) error {
 	return nil
 }
 
-func (c *featuresClient) get(ctx context.Context) error {
+func (c *featuresClient) get() bool {
 	c.mu.RLock()
-	if time.Since(c.lastTime) < 15*time.Second && c.flags != nil {
+	if time.Since(c.lastTime) < 15*time.Second {
 		c.mu.RUnlock()
-		return nil
+		return true
 	}
 	c.mu.RUnlock()
 
-	flags, err := c.fetch(ctx)
-	if err != nil {
-		return errors.Trace(err)
-	}
-
-	c.mu.Lock()
-	c.flags = flags
-	c.lastTime = time.Now()
-	c.mu.Unlock()
-
-	return nil
+	return false
 }
 
-func (c *featuresClient) fetch(ctx context.Context) ([]*flagReply, error) {
-	flags, err, _ := c.sf.Do("fetch", func() (interface{}, error) {
+func (c *featuresClient) fetch(ctx context.Context) error {
+	if c.get() {
+		return nil
+	}
+
+	_, err, _ := c.sf.Do("fetch", func() (interface{}, error) {
 		var lastErr error
 		ctx, cancel := context.WithTimeout(ctx, 7*time.Second)
 		defer cancel()
@@ -117,13 +111,18 @@ func (c *featuresClient) fetch(ctx context.Context) ([]*flagReply, error) {
 				continue
 			}
 
-			return flags, nil
+			c.mu.Lock()
+			c.flags = flags
+			c.lastTime = time.Now()
+			c.mu.Unlock()
+
+			return nil, nil
 		}
 
 		return nil, lastErr
 	})
 
-	return flags.([]*flagReply), err
+	return err
 }
 
 func (c *featuresClient) backgroundSync() {
@@ -137,7 +136,7 @@ func (c *featuresClient) backgroundSync() {
 	for {
 		select {
 		case <-ticker.C:
-			if err := c.get(context.Background()); err != nil {
+			if err := c.fetch(context.Background()); err != nil {
 				slog.Error("Failed to sync background feature flags", slog.String("error", err.Error()))
 			}
 		}
@@ -172,7 +171,7 @@ func Flag(ctx context.Context, code string, opts ...featuresOption) bool {
 		opt(options)
 	}
 
-	if err := client.get(ctx); err != nil {
+	if err := client.fetch(ctx); err != nil {
 		return false
 	}
 	flagsByCode := make(map[string]*flagReply)
