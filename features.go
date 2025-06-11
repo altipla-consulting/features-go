@@ -70,10 +70,10 @@ func (c *featuresClient) fetch(ctx context.Context) bool {
 	}
 
 	_, err, _ := c.sf.Do("fetch", func() (interface{}, error) {
-		var lastErr error
 		ctx, cancel := context.WithTimeout(ctx, 7*time.Second)
 		defer cancel()
 
+		var lastErr error
 		for i := 0; i < 3; i++ {
 			reqCtx, reqCancel := context.WithTimeout(ctx, 3*time.Second)
 			defer reqCancel()
