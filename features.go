@@ -3,6 +3,7 @@ package features
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/altipla-consulting/env"
-	"github.com/altipla-consulting/errors"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -21,11 +21,13 @@ var isLocal = env.IsLocal()
 var client *featuresClient
 
 type featuresClient struct {
-	url      string
-	flags    []*flagReply
+	url string
+
+	sf singleflight.Group
+
+	mu       sync.RWMutex // protects flags and lastTime
+	flags    []flagReply
 	lastTime time.Time
-	mu       sync.RWMutex
-	sf       singleflight.Group
 }
 
 type flagReply struct {
@@ -52,22 +54,30 @@ func Configure(serverURL, project string) {
 	go client.backgroundSync()
 }
 
-func (c *featuresClient) get() bool {
+func (c *featuresClient) get() map[string]flagReply {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if time.Since(c.lastTime) < 15*time.Second {
-		return true
+		return c.flagsMap()
 	}
 
-	return false
+	return nil
 }
 
-func (c *featuresClient) fetch(ctx context.Context) bool {
-	if c.get() {
-		return true
+func (c *featuresClient) flagsMap() map[string]flagReply {
+	flagsByCode := make(map[string]flagReply)
+	for _, flag := range client.flags {
+		flagsByCode[flag.Code] = flag
+	}
+	return flagsByCode
+}
+
+func (c *featuresClient) fetch(ctx context.Context) map[string]flagReply {
+	if flags := c.get(); flags != nil {
+		return flags
 	}
 
-	_, err, _ := c.sf.Do("fetch", func() (interface{}, error) {
+	fn := func() (interface{}, error) {
 		ctx, cancel := context.WithTimeout(ctx, 7*time.Second)
 		defer cancel()
 
@@ -94,7 +104,7 @@ func (c *featuresClient) fetch(ctx context.Context) bool {
 				return nil, err
 			}
 
-			var flags []*flagReply
+			var flags []flagReply
 			if err := json.NewDecoder(reply.Body).Decode(&flags); err != nil {
 				lastErr = err
 				continue
@@ -105,13 +115,23 @@ func (c *featuresClient) fetch(ctx context.Context) bool {
 			c.flags = flags
 			c.lastTime = time.Now()
 
-			return nil, nil
+			return c.flagsMap(), nil
 		}
 
-		return nil, lastErr
-	})
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.flags == nil {
+			return nil, lastErr
+		} else {
+			return c.flagsMap(), nil
+		}
+	}
+	flags, err, _ := c.sf.Do("fetch", fn)
+	if err != nil {
+		slog.Error("Failed to fetch feature flags", slog.String("error", err.Error()))
+	}
 
-	return err == nil
+	return flags.(map[string]flagReply)
 }
 
 func (c *featuresClient) backgroundSync() {
@@ -158,21 +178,18 @@ func Flag(ctx context.Context, code string, opts ...FlagOption) bool {
 		opt(options)
 	}
 
-	if !client.fetch(ctx) {
+	flags := client.fetch(ctx)
+	if flags == nil {
 		return false
 	}
-	flagsByCode := make(map[string]*flagReply)
-	for _, flag := range client.flags {
-		flagsByCode[flag.Code] = flag
-	}
-	if _, ok := flagsByCode[code]; !ok {
+	if _, ok := flags[code]; !ok {
 		slog.Warn("Feature flag not found", slog.String("code", code))
 		return false
 	}
 
-	if flagsByCode[code].Global {
+	if flags[code].Global {
 		if options.tenant != "" {
-			if slices.Contains(flagsByCode[code].Tenants, options.tenant) {
+			if slices.Contains(flags[code].Tenants, options.tenant) {
 				return true
 			}
 		} else {

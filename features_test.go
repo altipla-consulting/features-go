@@ -11,7 +11,7 @@ import (
 func initTestbed() {
 	isLocal = false
 	client = &featuresClient{
-		flags: []*flagReply{
+		flags: []flagReply{
 			{
 				Code:    "feature-1",
 				Tenants: []string{"tenant-1"},
