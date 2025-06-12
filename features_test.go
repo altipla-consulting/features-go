@@ -2,6 +2,8 @@ package features
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -25,6 +27,11 @@ func initTestbed() {
 		},
 		lastTime: time.Now(),
 	}
+}
+
+func initTestbedWithSrvURL(serverURL string) {
+	initTestbed()
+	client.url = serverURL
 }
 
 func TestPanicClientNotConfigured(t *testing.T) {
@@ -58,4 +65,44 @@ func TestFalseFlagWithTenant(t *testing.T) {
 func TestFalseFlagWithFalseTenant(t *testing.T) {
 	initTestbed()
 	require.False(t, Flag(context.Background(), "feature-1", WithTenant("tenant-3")))
+}
+
+func TestInternalServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	initTestbedWithSrvURL(server.URL)
+	client.lastTime = time.Now().Add(-1 * time.Minute)
+	require.True(t, Flag(context.Background(), "feature-1"))
+}
+
+func TestInternalServerErrorFlagsNil(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	initTestbedWithSrvURL(server.URL)
+	client.flags = nil
+	require.False(t, Flag(context.Background(), "feature-1"))
+}
+
+func TestTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(10 * time.Second)
+	}))
+	defer server.Close()
+	initTestbedWithSrvURL(server.URL)
+	client.lastTime = time.Now().Add(-1 * time.Minute)
+	require.True(t, Flag(context.Background(), "feature-1"))
+}
+
+func TestTimeoutFlagsNil(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(10 * time.Second)
+	}))
+	defer server.Close()
+	initTestbedWithSrvURL(server.URL)
+	client.flags = nil
+	require.False(t, Flag(context.Background(), "feature-1"))
 }

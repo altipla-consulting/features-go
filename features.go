@@ -55,8 +55,6 @@ func Configure(serverURL, project string) {
 }
 
 func (c *featuresClient) get() map[string]flagReply {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
 	if time.Since(c.lastTime) < 15*time.Second {
 		return c.flagsMap()
 	}
@@ -65,6 +63,8 @@ func (c *featuresClient) get() map[string]flagReply {
 }
 
 func (c *featuresClient) flagsMap() map[string]flagReply {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	flagsByCode := make(map[string]flagReply)
 	for _, flag := range client.flags {
 		flagsByCode[flag.Code] = flag
@@ -101,7 +101,7 @@ func (c *featuresClient) fetch(ctx context.Context) map[string]flagReply {
 						return nil, ctx.Err()
 					}
 				}
-				return nil, err
+				return nil, lastErr
 			}
 
 			var flags []flagReply
@@ -109,7 +109,6 @@ func (c *featuresClient) fetch(ctx context.Context) map[string]flagReply {
 				lastErr = err
 				continue
 			}
-
 			c.mu.Lock()
 			defer c.mu.Unlock()
 			c.flags = flags
@@ -118,16 +117,13 @@ func (c *featuresClient) fetch(ctx context.Context) map[string]flagReply {
 			return c.flagsMap(), nil
 		}
 
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		if c.flags == nil {
-			return nil, lastErr
-		} else {
-			return c.flagsMap(), nil
-		}
+		return nil, lastErr
 	}
 	flags, err, _ := c.sf.Do("fetch", fn)
 	if err != nil {
+		if c.flagsMap() != nil {
+			return c.flagsMap()
+		}
 		slog.Error("Failed to fetch feature flags", slog.String("error", err.Error()))
 	}
 
