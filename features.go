@@ -55,6 +55,8 @@ func Configure(serverURL, project string) {
 }
 
 func (c *featuresClient) get() map[string]flagReply {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	if time.Since(c.lastTime) < 15*time.Second {
 		return c.flagsMap()
 	}
@@ -63,8 +65,6 @@ func (c *featuresClient) get() map[string]flagReply {
 }
 
 func (c *featuresClient) flagsMap() map[string]flagReply {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
 	flagsByCode := make(map[string]flagReply)
 	for _, flag := range client.flags {
 		flagsByCode[flag.Code] = flag
@@ -121,6 +121,8 @@ func (c *featuresClient) fetch(ctx context.Context) map[string]flagReply {
 	}
 	flags, err, _ := c.sf.Do("fetch", fn)
 	if err != nil {
+		c.mu.RLock()
+		defer c.mu.RUnlock()
 		if c.flagsMap() != nil {
 			return c.flagsMap()
 		}

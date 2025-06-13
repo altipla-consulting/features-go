@@ -10,9 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func initTestbed() {
+func initTestbed(serverURL string) {
 	isLocal = false
 	client = &featuresClient{
+		url: serverURL,
 		flags: []flagReply{
 			{
 				Code:    "feature-1",
@@ -29,13 +30,8 @@ func initTestbed() {
 	}
 }
 
-func initTestbedWithSrvURL(serverURL string) {
-	initTestbed()
-	client.url = serverURL
-}
-
 func TestPanicClientNotConfigured(t *testing.T) {
-	initTestbed()
+	initTestbed("")
 	client = nil
 	require.PanicsWithValue(t, "Feature flags not configured", func() {
 		Flag(context.Background(), "feature-1")
@@ -43,27 +39,27 @@ func TestPanicClientNotConfigured(t *testing.T) {
 }
 
 func TestTrueFlag(t *testing.T) {
-	initTestbed()
+	initTestbed("")
 	require.True(t, Flag(context.Background(), "feature-1"))
 }
 
 func TestTrueFlagWithTenant(t *testing.T) {
-	initTestbed()
+	initTestbed("")
 	require.True(t, Flag(context.Background(), "feature-1", WithTenant("tenant-1")))
 }
 
 func TestFalseFlag(t *testing.T) {
-	initTestbed()
+	initTestbed("")
 	require.False(t, Flag(context.Background(), "feature-2"))
 }
 
 func TestFalseFlagWithTenant(t *testing.T) {
-	initTestbed()
+	initTestbed("")
 	require.False(t, Flag(context.Background(), "feature-2", WithTenant("tenant-1")))
 }
 
 func TestFalseFlagWithFalseTenant(t *testing.T) {
-	initTestbed()
+	initTestbed("")
 	require.False(t, Flag(context.Background(), "feature-1", WithTenant("tenant-3")))
 }
 
@@ -72,7 +68,7 @@ func TestInternalServerError(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
-	initTestbedWithSrvURL(server.URL)
+	initTestbed(server.URL)
 	client.lastTime = time.Now().Add(-1 * time.Minute)
 	require.True(t, Flag(context.Background(), "feature-1"))
 }
@@ -82,7 +78,7 @@ func TestInternalServerErrorFlagsNil(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
-	initTestbedWithSrvURL(server.URL)
+	initTestbed(server.URL)
 	client.flags = nil
 	require.False(t, Flag(context.Background(), "feature-1"))
 }
@@ -92,7 +88,7 @@ func TestTimeout(t *testing.T) {
 		time.Sleep(10 * time.Second)
 	}))
 	defer server.Close()
-	initTestbedWithSrvURL(server.URL)
+	initTestbed(server.URL)
 	client.lastTime = time.Now().Add(-1 * time.Minute)
 	require.True(t, Flag(context.Background(), "feature-1"))
 }
@@ -102,7 +98,7 @@ func TestTimeoutFlagsNil(t *testing.T) {
 		time.Sleep(10 * time.Second)
 	}))
 	defer server.Close()
-	initTestbedWithSrvURL(server.URL)
+	initTestbed(server.URL)
 	client.flags = nil
 	require.False(t, Flag(context.Background(), "feature-1"))
 }
