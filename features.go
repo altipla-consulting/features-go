@@ -121,8 +121,6 @@ func (c *featuresClient) fetch(ctx context.Context) map[string]flagReply {
 	}
 	flags, err, _ := c.sf.Do("fetch", fn)
 	if err != nil {
-		c.mu.RLock()
-		defer c.mu.RUnlock()
 		if c.flagsMap() != nil {
 			return c.flagsMap()
 		}

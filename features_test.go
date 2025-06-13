@@ -10,10 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func initTestbed(serverURL string) {
+func initTestbed() {
 	isLocal = false
 	client = &featuresClient{
-		url: serverURL,
 		flags: []flagReply{
 			{
 				Code:    "feature-1",
@@ -31,7 +30,7 @@ func initTestbed(serverURL string) {
 }
 
 func TestPanicClientNotConfigured(t *testing.T) {
-	initTestbed("")
+	initTestbed()
 	client = nil
 	require.PanicsWithValue(t, "Feature flags not configured", func() {
 		Flag(context.Background(), "feature-1")
@@ -39,66 +38,74 @@ func TestPanicClientNotConfigured(t *testing.T) {
 }
 
 func TestTrueFlag(t *testing.T) {
-	initTestbed("")
+	initTestbed()
 	require.True(t, Flag(context.Background(), "feature-1"))
 }
 
 func TestTrueFlagWithTenant(t *testing.T) {
-	initTestbed("")
+	initTestbed()
 	require.True(t, Flag(context.Background(), "feature-1", WithTenant("tenant-1")))
 }
 
 func TestFalseFlag(t *testing.T) {
-	initTestbed("")
+	initTestbed()
 	require.False(t, Flag(context.Background(), "feature-2"))
 }
 
 func TestFalseFlagWithTenant(t *testing.T) {
-	initTestbed("")
+	initTestbed()
 	require.False(t, Flag(context.Background(), "feature-2", WithTenant("tenant-1")))
 }
 
 func TestFalseFlagWithFalseTenant(t *testing.T) {
-	initTestbed("")
+	initTestbed()
 	require.False(t, Flag(context.Background(), "feature-1", WithTenant("tenant-3")))
 }
 
 func TestInternalServerError(t *testing.T) {
+	initTestbed()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
-	initTestbed(server.URL)
+	client.url = server.URL
 	client.lastTime = time.Now().Add(-1 * time.Minute)
+
 	require.True(t, Flag(context.Background(), "feature-1"))
 }
 
 func TestInternalServerErrorFlagsNil(t *testing.T) {
+	initTestbed()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
-	initTestbed(server.URL)
+	client.url = server.URL
 	client.flags = nil
+
 	require.False(t, Flag(context.Background(), "feature-1"))
 }
 
 func TestTimeout(t *testing.T) {
+	initTestbed()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(10 * time.Second)
 	}))
 	defer server.Close()
-	initTestbed(server.URL)
+	client.url = server.URL
 	client.lastTime = time.Now().Add(-1 * time.Minute)
+
 	require.True(t, Flag(context.Background(), "feature-1"))
 }
 
 func TestTimeoutFlagsNil(t *testing.T) {
+	initTestbed()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(10 * time.Second)
 	}))
 	defer server.Close()
-	initTestbed(server.URL)
+	client.url = server.URL
 	client.flags = nil
+
 	require.False(t, Flag(context.Background(), "feature-1"))
 }
