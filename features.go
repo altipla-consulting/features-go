@@ -78,6 +78,9 @@ func (c *featuresClient) fetch(ctx context.Context) map[string]flagReply {
 	}
 
 	fn := func() (interface{}, error) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
 		ctx, cancel := context.WithTimeout(ctx, 7*time.Second)
 		defer cancel()
 
@@ -87,7 +90,7 @@ func (c *featuresClient) fetch(ctx context.Context) map[string]flagReply {
 			defer reqCancel()
 			req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, c.url, nil)
 			if err != nil {
-				return nil, err
+				return c.flagsMap(), err
 			}
 
 			reply, err := http.DefaultClient.Do(req)
@@ -98,10 +101,10 @@ func (c *featuresClient) fetch(ctx context.Context) map[string]flagReply {
 					case <-time.After(1 * time.Second):
 						continue
 					case <-ctx.Done():
-						return nil, ctx.Err()
+						return c.flagsMap(), ctx.Err()
 					}
 				}
-				return nil, lastErr
+				return c.flagsMap(), lastErr
 			}
 
 			var flags []flagReply
@@ -109,21 +112,16 @@ func (c *featuresClient) fetch(ctx context.Context) map[string]flagReply {
 				lastErr = err
 				continue
 			}
-			c.mu.Lock()
-			defer c.mu.Unlock()
 			c.flags = flags
 			c.lastTime = time.Now()
 
 			return c.flagsMap(), nil
 		}
 
-		return nil, lastErr
+		return c.flagsMap(), lastErr
 	}
 	flags, err, _ := c.sf.Do("fetch", fn)
 	if err != nil {
-		if c.flagsMap() != nil {
-			return c.flagsMap()
-		}
 		slog.Error("Failed to fetch feature flags", slog.String("error", err.Error()))
 	}
 
