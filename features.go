@@ -1,24 +1,38 @@
 package features
 
 import (
-	"fmt"
-	"net/url"
+	"log/slog"
 )
 
 var DefaultClient *featuresClient
 
 // Initializes the feature client with the provided server URL and project,
 // and starts a background synchronization process.
-func Configure(serverURL, project string) {
-	qs := make(url.Values)
-	qs.Set("project", project)
-	u, err := url.Parse(serverURL)
-	if err != nil {
-		panic(fmt.Sprintf("cannot parse features url: %s", err.Error()))
+func Configure(serverURL, project string, opts ...ConfigureOption) {
+	o := new(configureOptions)
+	for _, opt := range opts {
+		opt(o)
 	}
-	u.Path += "/eval"
-	u.RawQuery = qs.Encode()
-	DefaultClient = newClient(u.String())
+	DefaultClient = newClient(serverURL, project, o)
+}
+
+type ConfigureOption func(*configureOptions)
+
+type configureOptions struct {
+	logger       *slog.Logger
+	disableStats bool
+}
+
+func WithLogger(logger *slog.Logger) ConfigureOption {
+	return func(c *configureOptions) {
+		c.logger = logger
+	}
+}
+
+func WithDisableStats(disabled bool) ConfigureOption {
+	return func(c *configureOptions) {
+		c.disableStats = disabled
+	}
 }
 
 type FlagOption func(*flagOptions)

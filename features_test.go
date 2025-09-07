@@ -43,6 +43,7 @@ func initFlags() {
 		},
 		stale:    time.Now().Add(1 * time.Minute),
 		accessCh: make(chan struct{}, 100),
+		logger:   slog.Default(),
 	}
 }
 
@@ -127,16 +128,16 @@ func (c *fakeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}, nil
 }
 
-func initFetch(delay time.Duration) *fakeTransport {
-	tr := &fakeTransport{delay: delay}
+func initFetch(delay time.Duration) *fakeEval {
+	tr := &fakeEval{delay: delay}
 
-	DefaultClient = newClient("https://example.com")
-	DefaultClient.local = false
-	DefaultClient.client = &http.Client{
-		Transport: tr,
-	}
-	DefaultClient.logger = slog.Default()
 	slog.SetLogLoggerLevel(slog.LevelDebug)
+	DefaultClient = newClient("https://example.com", "foo-project", &configureOptions{
+		logger:       slog.Default(),
+		disableStats: true,
+	})
+	DefaultClient.local = false
+	DefaultClient.client = &http.Client{Transport: tr}
 
 	return tr
 }
@@ -195,6 +196,7 @@ func TestFetchSingleflight(t *testing.T) {
 			require.True(t, Flag("global-enabled"))
 		}()
 
+		time.Sleep(2 * time.Second)
 		synctest.Wait()
 
 		require.Equal(t, 1, tr.getRequests())
