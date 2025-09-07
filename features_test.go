@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -70,12 +71,22 @@ func TestTenantFlags(t *testing.T) {
 }
 
 type fakeTransport struct {
-	delay    time.Duration
+	delay time.Duration
+
+	mu       sync.Mutex
 	requests int
 }
 
+func (c *fakeTransport) getRequests() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.requests
+}
+
 func (c *fakeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	c.mu.Lock()
 	c.requests++
+	c.mu.Unlock()
 
 	var buf bytes.Buffer
 	_ = json.NewEncoder(&buf).Encode([]flagReply{
@@ -186,7 +197,7 @@ func TestFetchSingleflight(t *testing.T) {
 
 		synctest.Wait()
 
-		require.Equal(t, 1, tr.requests)
+		require.Equal(t, 1, tr.getRequests())
 	})
 }
 
@@ -200,7 +211,7 @@ func TestFetchNotStale(t *testing.T) {
 
 		synctest.Wait()
 
-		require.Equal(t, 1, tr.requests)
+		require.Equal(t, 1, tr.getRequests())
 	})
 }
 
@@ -210,26 +221,26 @@ func TestFetchProgressiveTimers(t *testing.T) {
 		defer DefaultClient.Close()
 
 		require.True(t, Flag("global-enabled"))
-		require.Equal(t, 1, tr.requests)
+		require.Equal(t, 1, tr.getRequests())
 
 		for i := range 20 {
 			time.Sleep(15 * time.Second)
 			synctest.Wait()
-			require.Equal(t, i+2, tr.requests)
+			require.Equal(t, i+2, tr.getRequests())
 		}
 		for i := range 25 {
 			time.Sleep(1 * time.Minute)
 			synctest.Wait()
-			require.Equal(t, i+22, tr.requests)
+			require.Equal(t, i+22, tr.getRequests())
 		}
 
 		time.Sleep(5 * time.Minute)
 		synctest.Wait()
-		require.Equal(t, 22+25, tr.requests)
+		require.Equal(t, 22+25, tr.getRequests())
 
 		time.Sleep(5 * time.Minute)
 		synctest.Wait()
-		require.Equal(t, 22+25+1, tr.requests)
+		require.Equal(t, 22+25+1, tr.getRequests())
 	})
 }
 
@@ -240,15 +251,15 @@ func TestFetchMaxFetchIntervalSkipsFollowUpRequests(t *testing.T) {
 
 		DefaultClient.staleDuration = 0
 		require.True(t, Flag("global-enabled"))
-		require.Equal(t, 1, tr.requests)
+		require.Equal(t, 1, tr.getRequests())
 
 		time.Sleep(14 * time.Second)
 
 		DefaultClient.staleDuration = 15 * time.Second
 		require.True(t, Flag("global-enabled"))
-		require.Equal(t, 2, tr.requests)
+		require.Equal(t, 2, tr.getRequests())
 
 		time.Sleep(2 * time.Second)
-		require.Equal(t, 2, tr.requests)
+		require.Equal(t, 2, tr.getRequests())
 	})
 }
