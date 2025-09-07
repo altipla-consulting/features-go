@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -15,61 +16,90 @@ import (
 )
 
 type featuresClient struct {
-	url    string
-	sf     singleflight.Group
-	local  bool
-	client *http.Client
-	logger *slog.Logger
+	// Initialized configurations.
+	evalURL  string
+	statsURL string
+	sf       singleflight.Group
+	local    bool
+	client   *http.Client
+	logger   *slog.Logger
+	project  string
 
-	wg sync.WaitGroup
+	// Background control.
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 
+	// Cached flags.
 	mu          sync.RWMutex // protects stale, flags and lastRefresh
 	stale       time.Time
 	flags       []flagReply
 	lastRefresh time.Time
 
+	// Background fetching.
 	ticker          *time.Ticker
 	lastAccess      time.Time
 	refreshInterval time.Duration
+	accessCh        chan struct{}
 
-	stopCh   chan struct{}
-	accessCh chan struct{}
-
-	// constants.
+	// Mostly constants except for testing.
 	staleDuration      time.Duration
 	staleDurationError time.Duration
 	maxFetchInterval   time.Duration
+
+	statsCh chan accessEvent
+	stats   map[string]*flagStats
 }
 
-func newClient(url string) *featuresClient {
+func newClient(serverURL, project string, opts *configureOptions) *featuresClient {
+	if opts.logger == nil {
+		opts.logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+
+	qs := make(url.Values)
+	qs.Set("project", project)
+	evalURL, err := url.Parse(serverURL)
+	if err != nil {
+		panic(fmt.Sprintf("cannot parse features url: %s", err.Error()))
+	}
+	evalURL.Path += "/eval"
+	evalURL.RawQuery = qs.Encode()
+
+	statsURL, err := url.Parse(serverURL)
+	if err != nil {
+		panic(fmt.Sprintf("cannot parse features url: %s", err.Error()))
+	}
+	statsURL.Path += "/stats"
+
+	ctx, cancel := context.WithCancel(context.Background())
+
 	client := &featuresClient{
+		evalURL:            evalURL.String(),
+		statsURL:           statsURL.String(),
 		local:              env.IsLocal(),
 		client:             http.DefaultClient,
-		url:                url,
-		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
-		stopCh:             make(chan struct{}),
+		logger:             opts.logger,
+		project:            project,
+		ctx:                ctx,
+		cancel:             cancel,
 		accessCh:           make(chan struct{}, 100),
 		staleDuration:      1 * time.Minute,
 		staleDurationError: 5 * time.Minute,
 		refreshInterval:    5 * time.Minute,
 		maxFetchInterval:   10 * time.Second,
+		statsCh:            make(chan accessEvent, 500),
+		stats:              make(map[string]*flagStats),
 	}
 
 	client.wg.Add(1)
 	go client.backgroundFetch()
 
+	if !opts.disableStats {
+		client.wg.Add(1)
+		go client.backgroundStats()
+	}
+
 	return client
-}
-
-type flagReply struct {
-	Code    string       `json:"code"`
-	Enabled bool         `json:"enabled"`
-	Tenants []flagTenant `json:"tenants"`
-}
-
-type flagTenant struct {
-	Code    string `json:"code"`
-	Enabled bool   `json:"enabled"`
 }
 
 func (c *featuresClient) backgroundFetch() {
@@ -92,7 +122,7 @@ func (c *featuresClient) backgroundFetch() {
 			c.lastAccess = time.Now()
 			c.adjustInterval()
 
-		case <-c.stopCh:
+		case <-c.ctx.Done():
 			return
 		}
 	}
@@ -122,7 +152,7 @@ func (c *featuresClient) adjustInterval() {
 }
 
 func (c *featuresClient) Close() {
-	close(c.stopCh)
+	c.cancel()
 	c.wg.Wait()
 }
 
@@ -160,12 +190,12 @@ func (c *featuresClient) safeFetch() error {
 		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(c.ctx, 3*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.evalURL, nil)
 	if err != nil {
-		return fmt.Errorf("cannot create request: %w", err)
+		return fmt.Errorf("cannot create fetch request: %w", err)
 	}
 
 	resp, err := c.client.Do(req)
@@ -173,6 +203,10 @@ func (c *featuresClient) safeFetch() error {
 		return fmt.Errorf("cannot fetch: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected fetch status code %d", resp.StatusCode)
+	}
 
 	var fetched []flagReply
 	if err := json.NewDecoder(resp.Body).Decode(&fetched); err != nil {
@@ -208,11 +242,13 @@ func (c *featuresClient) IsEnabled(flag, tenant string) bool {
 
 		// Global flags always depend on the enabled state of the flag.
 		if len(f.Tenants) == 0 {
+			c.trackAccess(flag, f.Enabled)
 			return f.Enabled
 		}
 
 		// Disabled flags always return false for each tenant too.
 		if !f.Enabled {
+			c.trackAccess(flag, false)
 			return false
 		}
 
@@ -220,12 +256,15 @@ func (c *featuresClient) IsEnabled(flag, tenant string) bool {
 		// and return false.
 		for _, t := range f.Tenants {
 			if t.Code == tenant {
+				c.trackAccess(flag, t.Enabled)
 				return t.Enabled
 			}
 		}
 
+		c.trackAccess(flag, false)
 		return false
 	}
 
+	c.trackAccess(flag, false)
 	return false
 }

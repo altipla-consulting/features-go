@@ -43,6 +43,7 @@ func initFlags() {
 		},
 		stale:    time.Now().Add(1 * time.Minute),
 		accessCh: make(chan struct{}, 100),
+		logger:   slog.Default(),
 	}
 }
 
@@ -70,20 +71,20 @@ func TestTenantFlags(t *testing.T) {
 	require.False(t, Flag("global-disabled-tenant-enabled", WithTenant("foo-tenant")))
 }
 
-type fakeTransport struct {
+type fakeEval struct {
 	delay time.Duration
 
 	mu       sync.Mutex
 	requests int
 }
 
-func (c *fakeTransport) getRequests() int {
+func (c *fakeEval) getRequests() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.requests
 }
 
-func (c *fakeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (c *fakeEval) RoundTrip(req *http.Request) (*http.Response, error) {
 	c.mu.Lock()
 	c.requests++
 	c.mu.Unlock()
@@ -127,16 +128,16 @@ func (c *fakeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}, nil
 }
 
-func initFetch(delay time.Duration) *fakeTransport {
-	tr := &fakeTransport{delay: delay}
+func initFetch(delay time.Duration) *fakeEval {
+	tr := &fakeEval{delay: delay}
 
-	DefaultClient = newClient("https://example.com")
-	DefaultClient.local = false
-	DefaultClient.client = &http.Client{
-		Transport: tr,
-	}
-	DefaultClient.logger = slog.Default()
 	slog.SetLogLoggerLevel(slog.LevelDebug)
+	DefaultClient = newClient("https://example.com", "foo-project", &configureOptions{
+		logger:       slog.Default(),
+		disableStats: true,
+	})
+	DefaultClient.local = false
+	DefaultClient.client = &http.Client{Transport: tr}
 
 	return tr
 }
@@ -195,6 +196,7 @@ func TestFetchSingleflight(t *testing.T) {
 			require.True(t, Flag("global-enabled"))
 		}()
 
+		time.Sleep(2 * time.Second)
 		synctest.Wait()
 
 		require.Equal(t, 1, tr.getRequests())
