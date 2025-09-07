@@ -133,7 +133,7 @@ func (c *featuresClient) isStale() bool {
 }
 
 func (c *featuresClient) fetch() {
-	c.sf.Do("fetch", func() (interface{}, error) {
+	_, _, _ = c.sf.Do("fetch", func() (interface{}, error) {
 		c.wg.Add(1)
 		defer c.wg.Done()
 

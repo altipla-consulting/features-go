@@ -78,7 +78,7 @@ func (c *fakeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	c.requests++
 
 	var buf bytes.Buffer
-	json.NewEncoder(&buf).Encode([]flagReply{
+	_ = json.NewEncoder(&buf).Encode([]flagReply{
 		{Code: "global-enabled", Enabled: true},
 		{Code: "global-disabled", Enabled: false},
 		{
