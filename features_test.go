@@ -71,20 +71,20 @@ func TestTenantFlags(t *testing.T) {
 	require.False(t, Flag("global-disabled-tenant-enabled", WithTenant("foo-tenant")))
 }
 
-type fakeTransport struct {
+type fakeEval struct {
 	delay time.Duration
 
 	mu       sync.Mutex
 	requests int
 }
 
-func (c *fakeTransport) getRequests() int {
+func (c *fakeEval) getRequests() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.requests
 }
 
-func (c *fakeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (c *fakeEval) RoundTrip(req *http.Request) (*http.Response, error) {
 	c.mu.Lock()
 	c.requests++
 	c.mu.Unlock()
