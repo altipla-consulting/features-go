@@ -47,12 +47,6 @@ func initFlags() {
 	}
 }
 
-func TestPanicClientNotConfigured(t *testing.T) {
-	require.PanicsWithValue(t, "call features.Configure() before using features.Flag()", func() {
-		Flag("foo-feature")
-	})
-}
-
 func TestGlobalFlags(t *testing.T) {
 	initFlags()
 	require.True(t, Flag("global-enabled"))

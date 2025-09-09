@@ -50,8 +50,9 @@ func WithTenant(tenant string) FlagOption {
 
 // Flag returns true if the flag is enabled with the given options.
 func Flag(code string, opts ...FlagOption) bool {
+	// Uninitialized client is considered as disabled.
 	if DefaultClient == nil {
-		panic("call features.Configure() before using features.Flag()")
+		return false
 	}
 
 	o := new(flagOptions)
