@@ -29,7 +29,7 @@ func (c *fakeStats) RoundTrip(req *http.Request) (*http.Response, error) {
 			return nil, err
 		}
 
-		return &http.Response{StatusCode: http.StatusOK}, nil
+		return &http.Response{StatusCode: http.StatusNoContent}, nil
 	}
 
 	if req.URL.Path == "/eval" {
@@ -128,5 +128,34 @@ func TestStatsMultipleFlagsMultipleMinutes(t *testing.T) {
 			require.EqualValues(t, 1, stat.EnabledHits)
 			require.EqualValues(t, 1, stat.TotalHits)
 		}
+	})
+}
+
+func TestStatsCleanupAfterSuccess(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		tr := initStats()
+		defer DefaultClient.Close()
+
+		require.True(t, Flag("global-enabled"))
+
+		time.Sleep(90 * time.Second)
+		synctest.Wait()
+
+		require.Len(t, tr.last.Stats, 1)
+		require.Equal(t, "global-enabled", tr.last.Stats[0].Flag)
+		require.EqualValues(t, 946684800000, tr.last.Stats[0].Bucket)
+		require.EqualValues(t, 1, tr.last.Stats[0].EnabledHits)
+		require.EqualValues(t, 1, tr.last.Stats[0].TotalHits)
+
+		require.True(t, Flag("global-enabled"))
+
+		time.Sleep(90 * time.Second)
+		synctest.Wait()
+
+		require.Len(t, tr.last.Stats, 1)
+		require.Equal(t, "global-enabled", tr.last.Stats[0].Flag)
+		require.EqualValues(t, 946684860000, tr.last.Stats[0].Bucket)
+		require.EqualValues(t, 1, tr.last.Stats[0].EnabledHits)
+		require.EqualValues(t, 1, tr.last.Stats[0].TotalHits)
 	})
 }
