@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -109,15 +110,23 @@ func TestStatsMultipleFlagsMultipleMinutes(t *testing.T) {
 		DefaultClient.Close()
 
 		require.Len(t, tr.last.Stats, 2)
+		sort.Slice(tr.last.Stats, func(i, j int) bool {
+			return tr.last.Stats[i].Flag < tr.last.Stats[j].Flag
+		})
 
-		require.Equal(t, "global-enabled", tr.last.Stats[0].Flag)
-		require.EqualValues(t, 946684800000, tr.last.Stats[0].Bucket)
-		require.EqualValues(t, 1, tr.last.Stats[0].EnabledHits)
-		require.EqualValues(t, 1, tr.last.Stats[0].TotalHits)
-
-		require.Equal(t, "global-disabled", tr.last.Stats[1].Flag)
-		require.EqualValues(t, 946684860000, tr.last.Stats[1].Bucket)
-		require.EqualValues(t, 0, tr.last.Stats[1].EnabledHits)
-		require.EqualValues(t, 1, tr.last.Stats[1].TotalHits)
+		{
+			stat := tr.last.Stats[0]
+			require.Equal(t, "global-disabled", stat.Flag)
+			require.EqualValues(t, 946684860000, stat.Bucket)
+			require.EqualValues(t, 0, stat.EnabledHits)
+			require.EqualValues(t, 1, stat.TotalHits)
+		}
+		{
+			stat := tr.last.Stats[1]
+			require.Equal(t, "global-enabled", stat.Flag)
+			require.EqualValues(t, 946684800000, stat.Bucket)
+			require.EqualValues(t, 1, stat.EnabledHits)
+			require.EqualValues(t, 1, stat.TotalHits)
+		}
 	})
 }
