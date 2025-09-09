@@ -2,6 +2,8 @@ package features
 
 import (
 	"log/slog"
+
+	"github.com/altipla-consulting/env"
 )
 
 var DefaultClient *featuresClient
@@ -50,9 +52,9 @@ func WithTenant(tenant string) FlagOption {
 
 // Flag returns true if the flag is enabled with the given options.
 func Flag(code string, opts ...FlagOption) bool {
-	// Uninitialized client is considered as disabled.
+	// Uninitialized client is considered as a basic development flag.
 	if DefaultClient == nil {
-		return false
+		return env.IsLocal()
 	}
 
 	o := new(flagOptions)
