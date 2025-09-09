@@ -50,6 +50,10 @@ func WithTenant(tenant string) FlagOption {
 
 // Flag returns true if the flag is enabled with the given options.
 func Flag(code string, opts ...FlagOption) bool {
+	if DefaultClient != nil && DefaultClient.local {
+		return true
+	}
+
 	if DefaultClient == nil {
 		panic("call features.Configure() before using features.Flag()")
 	}
