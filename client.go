@@ -53,7 +53,9 @@ type featuresClient struct {
 
 func newClient(serverURL, project string, opts *configureOptions) *featuresClient {
 	if opts.logger == nil {
-		opts.logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+		opts.logger = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{
+			Level: slog.LevelWarn,
+		}))
 	}
 
 	qs := make(url.Values)
