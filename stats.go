@@ -24,7 +24,7 @@ func (c *featuresClient) trackAccess(flag string, enabled bool) {
 }
 
 func (c *featuresClient) backgroundStats() {
-	slog.Info("feature flags: background stats collector enabled")
+	c.logger.Info("feature flags: background stats collector enabled")
 
 	defer c.wg.Done()
 
