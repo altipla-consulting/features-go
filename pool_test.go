@@ -45,7 +45,7 @@ func TestPoolClientConcurrent(t *testing.T) {
 	defer pool.Close()
 
 	const n = 50
-	clients := make([]*Client, n)
+	clients := make([]*featuresClient, n)
 	var wg sync.WaitGroup
 	wg.Add(n)
 	for i := 0; i < n; i++ {
@@ -62,7 +62,7 @@ func TestPoolClientConcurrent(t *testing.T) {
 }
 
 func TestClientFlag(t *testing.T) {
-	client := &Client{
+	client := &featuresClient{
 		flags: []flagReply{
 			{Code: "global-enabled", Enabled: true},
 			{

@@ -15,7 +15,7 @@ import (
 )
 
 func initFlags() {
-	defaultClient = &Client{
+	DefaultClient = &featuresClient{
 		flags: []flagReply{
 			{Code: "global-enabled", Enabled: true},
 			{Code: "global-disabled", Enabled: false},
@@ -126,12 +126,12 @@ func initFetch(delay time.Duration) *fakeEval {
 	tr := &fakeEval{delay: delay}
 
 	slog.SetLogLoggerLevel(slog.LevelDebug)
-	defaultClient = newClient("https://example.com", "foo-project", &configureOptions{
+	DefaultClient = newClient("https://example.com", "foo-project", &configureOptions{
 		logger:       slog.Default(),
 		disableStats: true,
 	})
-	defaultClient.local = false
-	defaultClient.client = &http.Client{Transport: tr}
+	DefaultClient.local = false
+	DefaultClient.client = &http.Client{Transport: tr}
 
 	return tr
 }
@@ -139,7 +139,7 @@ func initFetch(delay time.Duration) *fakeEval {
 func TestFetch(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		initFetch(0)
-		defer defaultClient.Close()
+		defer DefaultClient.Close()
 
 		require.True(t, Flag("global-enabled"))
 	})
@@ -148,7 +148,7 @@ func TestFetch(t *testing.T) {
 func TestFetchTimeout(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		initFetch(4 * time.Second)
-		defer defaultClient.Close()
+		defer DefaultClient.Close()
 
 		require.False(t, Flag("global-enabled"))
 	})
@@ -157,7 +157,7 @@ func TestFetchTimeout(t *testing.T) {
 func TestFetchTimeoutWithStale(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tr := initFetch(0)
-		defer defaultClient.Close()
+		defer DefaultClient.Close()
 
 		require.True(t, Flag("global-enabled"))
 
@@ -169,19 +169,19 @@ func TestFetchTimeoutWithStale(t *testing.T) {
 func TestFetchErrorNotHammering(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		initFetch(4 * time.Second)
-		defer defaultClient.Close()
+		defer DefaultClient.Close()
 
 		require.False(t, Flag("global-enabled"))
 
-		require.WithinDuration(t, defaultClient.stale, time.Now().Add(5*time.Minute), 1*time.Second)
+		require.WithinDuration(t, DefaultClient.stale, time.Now().Add(5*time.Minute), 1*time.Second)
 	})
 }
 
 func TestFetchSingleflight(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tr := initFetch(2 * time.Second)
-		defaultClient.staleDuration = 0
-		defer defaultClient.Close()
+		DefaultClient.staleDuration = 0
+		defer DefaultClient.Close()
 
 		go func() {
 			require.True(t, Flag("global-enabled"))
@@ -200,7 +200,7 @@ func TestFetchSingleflight(t *testing.T) {
 func TestFetchNotStale(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tr := initFetch(0)
-		defer defaultClient.Close()
+		defer DefaultClient.Close()
 
 		require.True(t, Flag("global-enabled"))
 		require.True(t, Flag("global-enabled"))
@@ -214,7 +214,7 @@ func TestFetchNotStale(t *testing.T) {
 func TestFetchProgressiveTimers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tr := initFetch(0)
-		defer defaultClient.Close()
+		defer DefaultClient.Close()
 
 		require.True(t, Flag("global-enabled"))
 		require.Equal(t, 1, tr.getRequests())
@@ -243,15 +243,15 @@ func TestFetchProgressiveTimers(t *testing.T) {
 func TestFetchMaxFetchIntervalSkipsFollowUpRequests(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tr := initFetch(0)
-		defer defaultClient.Close()
+		defer DefaultClient.Close()
 
-		defaultClient.staleDuration = 0
+		DefaultClient.staleDuration = 0
 		require.True(t, Flag("global-enabled"))
 		require.Equal(t, 1, tr.getRequests())
 
 		time.Sleep(14 * time.Second)
 
-		defaultClient.staleDuration = 15 * time.Second
+		DefaultClient.staleDuration = 15 * time.Second
 		require.True(t, Flag("global-enabled"))
 		require.Equal(t, 2, tr.getRequests())
 

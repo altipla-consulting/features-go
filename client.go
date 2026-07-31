@@ -15,7 +15,7 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-type Client struct {
+type featuresClient struct {
 	// Initialized configurations.
 	evalURL  string
 	statsURL string
@@ -51,7 +51,7 @@ type Client struct {
 	stats   map[string]*flagStats
 }
 
-func newClient(serverURL, project string, opts *configureOptions) *Client {
+func newClient(serverURL, project string, opts *configureOptions) *featuresClient {
 	if opts.logger == nil {
 		opts.logger = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{
 			Level: slog.LevelWarn,
@@ -75,7 +75,7 @@ func newClient(serverURL, project string, opts *configureOptions) *Client {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	client := &Client{
+	client := &featuresClient{
 		evalURL:            evalURL.String(),
 		statsURL:           statsURL.String(),
 		local:              env.IsLocal(),
@@ -104,7 +104,7 @@ func newClient(serverURL, project string, opts *configureOptions) *Client {
 	return client
 }
 
-func (c *Client) backgroundFetch() {
+func (c *featuresClient) backgroundFetch() {
 	defer c.wg.Done()
 
 	c.ticker = time.NewTicker(c.refreshInterval)
@@ -130,7 +130,7 @@ func (c *Client) backgroundFetch() {
 	}
 }
 
-func (c *Client) adjustInterval() {
+func (c *featuresClient) adjustInterval() {
 	old := c.refreshInterval
 
 	switch sinceAccess := time.Since(c.lastAccess); {
@@ -153,18 +153,18 @@ func (c *Client) adjustInterval() {
 	}
 }
 
-func (c *Client) Close() {
+func (c *featuresClient) Close() {
 	c.cancel()
 	c.wg.Wait()
 }
 
-func (c *Client) isStale() bool {
+func (c *featuresClient) isStale() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.stale.IsZero() || time.Since(c.stale) >= 0
 }
 
-func (c *Client) fetch() {
+func (c *featuresClient) fetch() {
 	_, _, _ = c.sf.Do("fetch", func() (interface{}, error) {
 		c.wg.Add(1)
 		defer c.wg.Done()
@@ -183,7 +183,7 @@ func (c *Client) fetch() {
 	})
 }
 
-func (c *Client) safeFetch() error {
+func (c *featuresClient) safeFetch() error {
 	c.mu.RLock()
 	lastFetch := c.lastRefresh
 	c.mu.RUnlock()
@@ -224,7 +224,7 @@ func (c *Client) safeFetch() error {
 	return nil
 }
 
-func (c *Client) IsEnabled(flag, tenant string) bool {
+func (c *featuresClient) IsEnabled(flag, tenant string) bool {
 	if c.local {
 		return true
 	}

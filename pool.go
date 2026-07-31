@@ -9,7 +9,7 @@ type Pool struct {
 	opts      []ConfigureOption
 
 	mu      sync.Mutex
-	clients map[string]*Client
+	clients map[string]*featuresClient
 }
 
 // NewPool creates a pool that lazily builds clients for each project.
@@ -17,12 +17,12 @@ func NewPool(serverURL string, opts ...ConfigureOption) *Pool {
 	return &Pool{
 		serverURL: serverURL,
 		opts:      opts,
-		clients:   make(map[string]*Client),
+		clients:   make(map[string]*featuresClient),
 	}
 }
 
 // Client returns the cached client for project, creating it on first use.
-func (p *Pool) Client(project string) *Client {
+func (p *Pool) Client(project string) *featuresClient {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
