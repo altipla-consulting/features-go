@@ -8,7 +8,7 @@ type Pool struct {
 	serverURL string
 	opts      []ConfigureOption
 
-	mu      sync.Mutex
+	mu      sync.RWMutex
 	clients map[string]*featuresClient
 }
 
@@ -23,6 +23,10 @@ func NewPool(serverURL string, opts ...ConfigureOption) *Pool {
 
 // Client returns the cached client for project, creating it on first use.
 func (p *Pool) Client(project string) *featuresClient {
+	if c := p.readClient(project); c != nil {
+		return c
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -33,6 +37,12 @@ func (p *Pool) Client(project string) *featuresClient {
 	c := newClient(p.serverURL, project, configureOptionsFrom(p.opts))
 	p.clients[project] = c
 	return c
+}
+
+func (p *Pool) readClient(project string) *featuresClient {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.clients[project]
 }
 
 // Flag evaluates a flag for the given project.
