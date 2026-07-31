@@ -15,7 +15,7 @@ type accessEvent struct {
 	enabled bool
 }
 
-func (c *featuresClient) trackAccess(flag string, enabled bool) {
+func (c *Client) trackAccess(flag string, enabled bool) {
 	select {
 	case c.statsCh <- accessEvent{flag: flag, enabled: enabled}:
 	default:
@@ -23,7 +23,7 @@ func (c *featuresClient) trackAccess(flag string, enabled bool) {
 	}
 }
 
-func (c *featuresClient) backgroundStats() {
+func (c *Client) backgroundStats() {
 	c.logger.Info("feature flags: background stats collector enabled")
 
 	defer c.wg.Done()
@@ -90,7 +90,7 @@ type bucketStats struct {
 	totalHits   int64
 }
 
-func (c *featuresClient) sendStats(ctx context.Context) error {
+func (c *Client) sendStats(ctx context.Context) error {
 	if c.local {
 		return nil
 	}

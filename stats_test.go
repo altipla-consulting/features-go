@@ -43,11 +43,11 @@ func initStats() *fakeStats {
 	tr := new(fakeStats)
 
 	slog.SetLogLoggerLevel(slog.LevelDebug)
-	DefaultClient = newClient("https://example.com", "foo-project", &configureOptions{
+	defaultClient = newClient("https://example.com", "foo-project", &configureOptions{
 		logger: slog.Default(),
 	})
-	DefaultClient.local = false
-	DefaultClient.client = &http.Client{Transport: tr}
+	defaultClient.local = false
+	defaultClient.client = &http.Client{Transport: tr}
 
 	return tr
 }
@@ -55,12 +55,12 @@ func initStats() *fakeStats {
 func TestStats(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tr := initStats()
-		defer DefaultClient.Close()
+		defer defaultClient.Close()
 
 		require.True(t, Flag("global-enabled"))
 
 		synctest.Wait()
-		DefaultClient.Close()
+		defaultClient.Close()
 
 		require.Equal(t, "foo-project", tr.last.Project)
 		require.Len(t, tr.last.Stats, 1)
@@ -74,7 +74,7 @@ func TestStats(t *testing.T) {
 func TestStatsEnabledTotalHits(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tr := initStats()
-		defer DefaultClient.Close()
+		defer defaultClient.Close()
 
 		require.True(t, Flag("tenant-enabled", WithTenant("foo-tenant")))
 		require.True(t, Flag("tenant-enabled", WithTenant("foo-tenant")))
@@ -83,7 +83,7 @@ func TestStatsEnabledTotalHits(t *testing.T) {
 		require.False(t, Flag("tenant-enabled", WithTenant("bar-tenant")))
 
 		synctest.Wait()
-		DefaultClient.Close()
+		defaultClient.Close()
 
 		require.Len(t, tr.last.Stats, 1)
 		require.Equal(t, "tenant-enabled", tr.last.Stats[0].Flag)
@@ -96,7 +96,7 @@ func TestStatsEnabledTotalHits(t *testing.T) {
 func TestStatsMultipleFlagsMultipleMinutes(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tr := initStats()
-		defer DefaultClient.Close()
+		defer defaultClient.Close()
 
 		tr.forceError = true
 
@@ -107,7 +107,7 @@ func TestStatsMultipleFlagsMultipleMinutes(t *testing.T) {
 		tr.forceError = false
 
 		synctest.Wait()
-		DefaultClient.Close()
+		defaultClient.Close()
 
 		require.Len(t, tr.last.Stats, 2)
 		sort.Slice(tr.last.Stats, func(i, j int) bool {
@@ -134,7 +134,7 @@ func TestStatsMultipleFlagsMultipleMinutes(t *testing.T) {
 func TestStatsCleanupAfterSuccess(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tr := initStats()
-		defer DefaultClient.Close()
+		defer defaultClient.Close()
 
 		require.True(t, Flag("global-enabled"))
 

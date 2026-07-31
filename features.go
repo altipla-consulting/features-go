@@ -6,16 +6,23 @@ import (
 	"github.com/altipla-consulting/env"
 )
 
-var DefaultClient *featuresClient
+var defaultClient *Client
 
-// Initializes the feature client with the provided server URL and project,
-// and starts a background synchronization process.
+// Configure initializes the default feature client with the provided server URL
+// and project, and starts a background synchronization process.
 func Configure(serverURL, project string, opts ...ConfigureOption) {
+	if defaultClient != nil {
+		defaultClient.Close()
+	}
+	defaultClient = newClient(serverURL, project, configureOptionsFrom(opts))
+}
+
+func configureOptionsFrom(opts []ConfigureOption) *configureOptions {
 	o := new(configureOptions)
 	for _, opt := range opts {
 		opt(o)
 	}
-	DefaultClient = newClient(serverURL, project, o)
+	return o
 }
 
 type ConfigureOption func(*configureOptions)
@@ -50,16 +57,26 @@ func WithTenant(tenant string) FlagOption {
 	}
 }
 
-// Flag returns true if the flag is enabled with the given options.
-func Flag(code string, opts ...FlagOption) bool {
-	// Uninitialized client is considered as a basic development flag.
-	if DefaultClient == nil {
-		return env.IsLocal()
-	}
-
+func applyFlagOptions(opts []FlagOption) *flagOptions {
 	o := new(flagOptions)
 	for _, opt := range opts {
 		opt(o)
 	}
-	return DefaultClient.IsEnabled(code, o.tenant)
+	return o
+}
+
+// Flag returns true if the flag is enabled with the given options.
+func Flag(code string, opts ...FlagOption) bool {
+	// Uninitialized client is considered as a basic development flag.
+	if defaultClient == nil {
+		return env.IsLocal()
+	}
+
+	return defaultClient.Flag(code, opts...)
+}
+
+// Flag returns true if the flag is enabled with the given options.
+func (c *Client) Flag(code string, opts ...FlagOption) bool {
+	o := applyFlagOptions(opts)
+	return c.IsEnabled(code, o.tenant)
 }
