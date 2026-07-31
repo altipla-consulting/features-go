@@ -8,14 +8,21 @@ import (
 
 var DefaultClient *featuresClient
 
-// Initializes the feature client with the provided server URL and project,
-// and starts a background synchronization process.
+// Configure initializes the default feature client with the provided server URL
+// and project, and starts a background synchronization process.
 func Configure(serverURL, project string, opts ...ConfigureOption) {
+	if DefaultClient != nil {
+		DefaultClient.Close()
+	}
+	DefaultClient = newClient(serverURL, project, configureOptionsFrom(opts))
+}
+
+func configureOptionsFrom(opts []ConfigureOption) *configureOptions {
 	o := new(configureOptions)
 	for _, opt := range opts {
 		opt(o)
 	}
-	DefaultClient = newClient(serverURL, project, o)
+	return o
 }
 
 type ConfigureOption func(*configureOptions)
@@ -50,6 +57,14 @@ func WithTenant(tenant string) FlagOption {
 	}
 }
 
+func applyFlagOptions(opts []FlagOption) *flagOptions {
+	o := new(flagOptions)
+	for _, opt := range opts {
+		opt(o)
+	}
+	return o
+}
+
 // Flag returns true if the flag is enabled with the given options.
 func Flag(code string, opts ...FlagOption) bool {
 	// Uninitialized client is considered as a basic development flag.
@@ -57,9 +72,11 @@ func Flag(code string, opts ...FlagOption) bool {
 		return env.IsLocal()
 	}
 
-	o := new(flagOptions)
-	for _, opt := range opts {
-		opt(o)
-	}
-	return DefaultClient.IsEnabled(code, o.tenant)
+	return DefaultClient.Flag(code, opts...)
+}
+
+// Flag returns true if the flag is enabled with the given options.
+func (c *featuresClient) Flag(code string, opts ...FlagOption) bool {
+	o := applyFlagOptions(opts)
+	return c.IsEnabled(code, o.tenant)
 }

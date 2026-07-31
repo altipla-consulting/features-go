@@ -14,9 +14,9 @@ go get github.com/altipla-consulting/features-go
 
 ## Usage
 
-### Configure features
+### Configure features (single project)
 
-To configure features, you need to run features configure, passing the server URL and the project corresponding to the flags.
+To configure features, run `Configure` with the server URL and the project corresponding to the flags.
 
 ```go
 func main() {
@@ -27,7 +27,7 @@ func main() {
 ### Check feature flag is enabled
 
 ```go
-if features.Flag(ctx, "feature") {
+if features.Flag("feature") {
     fmt.Print("Feature flag is enabled.")
 }
 ```
@@ -35,8 +35,20 @@ if features.Flag(ctx, "feature") {
 ### Check feature flag is enabled with tenant
 
 ```go
-if features.Flag(ctx, "feature", features.WithTenant("tenant")) {
+if features.Flag("feature", features.WithTenant("tenant")) {
     fmt.Print("Feature flag is enabled with tenant.")
+}
+```
+
+### Multiple projects (connector / intermediary)
+
+When the same process evaluates flags for several projects, use a `Pool`. It creates one client per project on first use and reuses it afterwards, so the in-memory cache and background sync are preserved across calls.
+
+```go
+pool := features.NewPool("https://youserver.com", features.WithLogger(log))
+
+if pool.Flag(project, "feature", features.WithTenant(tenant)) {
+    fmt.Print("Feature flag is enabled.")
 }
 ```
 
